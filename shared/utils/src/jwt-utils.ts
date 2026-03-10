@@ -1,4 +1,5 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
+import { StringValue } from 'ms';
 import { UserRole } from '@eventhub/shared-types';
 import { createLogger } from './logger';
 
@@ -14,13 +15,13 @@ export interface JwtPayload {
 
 export class JwtUtils {
   private secret: string;
-  private accessTokenExpiry: string;
-  private refreshTokenExpiry: string;
+  private accessTokenExpiry: StringValue;
+  private refreshTokenExpiry: StringValue;
 
   constructor(
     secret: string = process.env.JWT_SECRET || 'your-secret-key',
-    accessTokenExpiry: string = '15m',
-    refreshTokenExpiry: string = '7d'
+    accessTokenExpiry: StringValue = '15m',
+    refreshTokenExpiry: StringValue = '7d'
   ) {
     this.secret = secret;
     this.accessTokenExpiry = accessTokenExpiry;
@@ -51,10 +52,7 @@ export class JwtUtils {
     }
   }
 
-  generateTokenPair(payload: Omit<JwtPayload, 'iat' | 'exp'>): {
-    accessToken: string;
-    refreshToken: string;
-  } {
+  generateTokenPair(payload: Omit<JwtPayload, 'iat' | 'exp'>) {
     return {
       accessToken: this.generateAccessToken(payload),
       refreshToken: this.generateRefreshToken(payload)
