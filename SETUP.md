@@ -14,7 +14,7 @@ bash setup.sh
 
 ### Step 2: Start Infrastructure
 ```bash
-docker-compose up -d postgres redis kafka
+docker-compose up -d postgres redis kafka zookeeper
 ```
 
 ### Step 3: Run Database Migrations

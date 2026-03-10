@@ -129,18 +129,14 @@ KafkaJSConnectionError: Connection timeout
 
 **Solution:**
 ```bash
-# Kafka takes 30-60 seconds to start (KRaft formatting on first run)
-docker-compose up -d kafka
+# Kafka takes 30-60 seconds to start
+docker-compose up -d kafka zookeeper
 
-# Wait for Kafka to be ready (look for "Kafka Server started")
-docker-compose logs -f kafka
+# Wait for Kafka to be ready
+docker-compose logs -f kafka | grep "started"
 
 # Check Kafka is running
 docker ps | grep kafka
-
-# Test connection
-docker exec -it eventhub-kafka \
-  kafka-broker-api-versions --bootstrap-server localhost:9092
 ```
 
 ### Issue 7: Port already in use

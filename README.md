@@ -64,7 +64,7 @@ A microservices-based backend platform for connecting event service providers wi
 - **PostgreSQL**: Primary database for transactional data
 - **MongoDB**: Document store for profiles and media metadata
 - **Redis**: Caching and session management
-- **Kafka**: Event streaming (KRaft mode - no ZooKeeper needed!)
+- **Kafka**: Event streaming and inter-service communication
 - **MinIO**: S3-compatible object storage
 - **Docker**: Containerization
 - **Kubernetes** (optional): Orchestration
@@ -124,7 +124,7 @@ cp services/user-service/.env.example services/user-service/.env
 
 4. **Start infrastructure services with Docker**
 ```bash
-docker-compose up -d postgres mongodb redis kafka minio
+docker-compose up -d postgres mongodb redis kafka zookeeper minio
 ```
 
 5. **Run database migrations**

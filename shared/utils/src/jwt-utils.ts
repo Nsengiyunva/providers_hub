@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { UserRole } from '@eventhub/shared-types';
 import { createLogger } from './logger';
 
@@ -29,9 +29,10 @@ export class JwtUtils {
 
   generateAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
     try {
-      return jwt.sign(payload, this.secret, {
+      const options: SignOptions = {
         expiresIn: this.accessTokenExpiry
-      });
+      };
+      return jwt.sign(payload, this.secret, options);
     } catch (error) {
       logger.error('Error generating access token', { error });
       throw error;
@@ -40,9 +41,10 @@ export class JwtUtils {
 
   generateRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
     try {
-      return jwt.sign(payload, this.secret, {
+      const options: SignOptions = {
         expiresIn: this.refreshTokenExpiry
-      });
+      };
+      return jwt.sign(payload, this.secret, options);
     } catch (error) {
       logger.error('Error generating refresh token', { error });
       throw error;

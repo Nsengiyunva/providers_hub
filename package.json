@@ -24,7 +24,7 @@
     "docker:build": "docker-compose build",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "kafka:start": "docker-compose up -d kafka"
+    "kafka:start": "docker-compose up -d kafka zookeeper"
   },
   "keywords": [
     "microservices",
