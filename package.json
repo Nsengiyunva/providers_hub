@@ -1,0 +1,40 @@
+{
+  "name": "eventhub-backend",
+  "version": "1.0.0",
+  "description": "EventHub Microservices Backend",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "shared/types",
+    "shared/utils"
+  ],
+  "scripts": {
+    "setup": "bash setup.sh",
+    "build:shared": "npm run build --workspace=shared/types && npm run build --workspace=shared/utils",
+    "build": "npm run build --workspaces",
+    "dev:user": "npm run dev --workspace=services/user-service",
+    "dev:profile": "npm run dev --workspace=services/profile-service",
+    "dev:catalog": "npm run dev --workspace=services/catalog-service",
+    "dev:inquiry": "npm run dev --workspace=services/inquiry-service",
+    "dev:payment": "npm run dev --workspace=services/payment-service",
+    "dev:review": "npm run dev --workspace=services/review-service",
+    "dev:notification": "npm run dev --workspace=services/notification-service",
+    "dev:media": "npm run dev --workspace=services/media-service",
+    "dev:gateway": "npm run dev --workspace=services/api-gateway",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "kafka:start": "docker-compose up -d kafka"
+  },
+  "keywords": [
+    "microservices",
+    "nodejs",
+    "typescript",
+    "kafka",
+    "events"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {}
+}

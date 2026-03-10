@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  GUEST
+  SERVICE_PROVIDER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  password        String
+  firstName       String
+  lastName        String
+  role            UserRole   @default(GUEST)
+  status          UserStatus @default(PENDING_VERIFICATION)
+  emailVerified   Boolean    @default(false)
+  phoneNumber     String?
+  phoneVerified   Boolean    @default(false)
+  
+  // Email verification
+  emailVerificationToken String?
+  emailVerificationExpiry DateTime?
+  
+  // Password reset
+  passwordResetToken String?
+  passwordResetExpiry DateTime?
+  
+  // Refresh tokens
+  refreshTokens   RefreshToken[]
+  
+  // Metadata
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+  loginAttempts   Int        @default(0)
+  lockedUntil     DateTime?
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  token       String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  isRevoked   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
