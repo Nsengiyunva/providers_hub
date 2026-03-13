@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_DIR="//home/user1/personal/providers_hub"
+APP_DIR="/home/user1/personal/providers_hub"
 DOMAIN="providerapi.erb.go.ug"  # Change this to your domain
 
 print_status() {
