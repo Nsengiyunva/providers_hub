@@ -1,5 +1,5 @@
 import Redis from 'ioredis';
-import { logger } from './logger';
+import logger from './logger';
 
 export class RedisCache {
   private client: Redis;
@@ -11,7 +11,7 @@ export class RedisCache {
       logger.info('Redis connected');
     });
 
-    this.client.on('error', (error) => {
+    this.client.on('error', (error: Error) => {
       logger.error('Redis connection error:', error);
     });
   }
