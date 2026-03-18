@@ -1,85 +1,56 @@
-import { createClient, RedisClientType } from 'redis';
-import { createLogger } from './logger';
-
-const logger = createLogger('redis-cache');
+import Redis from 'ioredis';
+import { logger } from './logger';
 
 export class RedisCache {
-  private client: RedisClientType;
-  private connected: boolean = false;
+  private client: Redis;
 
-  constructor(url: string) {
-    this.client = createClient({ url });
-
-    this.client.on('error', (err) => {
-      logger.error('Redis Client Error', { error: err });
-    });
+  constructor(redisUrl?: string) {
+    this.client = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379');
 
     this.client.on('connect', () => {
-      logger.info('Redis client connected');
+      logger.info('Redis connected');
+    });
+
+    this.client.on('error', (error) => {
+      logger.error('Redis connection error:', error);
     });
   }
 
-  async connect(): Promise<void> {
-    if (!this.connected) {
-      await this.client.connect();
-      this.connected = true;
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.connected) {
-      await this.client.disconnect();
-      this.connected = false;
-      logger.info('Redis client disconnected');
-    }
-  }
-
-  async get<T>(key: string): Promise<T | null> {
+  async get(key: string): Promise<string | null> {
     try {
       const value = await this.client.get(key);
-      if (!value) return null;
-      return JSON.parse(value) as T;
+      return value;
     } catch (error) {
-      logger.error('Cache get error', { key, error });
+      logger.error('Redis GET error:', error);
       return null;
     }
   }
 
-  async set(key: string, value: any, ttlSeconds?: number): Promise<void> {
+  async set(key: string, value: string, expiryInSeconds?: number): Promise<boolean> {
     try {
-      const stringValue = JSON.stringify(value);
-      if (ttlSeconds) {
-        await this.client.setEx(key, ttlSeconds, stringValue);
+      if (expiryInSeconds) {
+        await this.client.setex(key, expiryInSeconds, value);
       } else {
-        await this.client.set(key, stringValue);
+        await this.client.set(key, value);
       }
-      logger.debug('Cache set', { key, ttl: ttlSeconds });
+      return true;
     } catch (error) {
-      logger.error('Cache set error', { key, error });
-      throw error;
+      logger.error('Redis SET error:', error);
+      return false;
     }
   }
 
-  async delete(key: string): Promise<void> {
+  async setWithExpiry(key: string, value: string, expiryInSeconds: number): Promise<boolean> {
+    return this.set(key, value, expiryInSeconds);
+  }
+
+  async delete(key: string): Promise<boolean> {
     try {
       await this.client.del(key);
-      logger.debug('Cache delete', { key });
+      return true;
     } catch (error) {
-      logger.error('Cache delete error', { key, error });
-      throw error;
-    }
-  }
-
-  async deletePattern(pattern: string): Promise<void> {
-    try {
-      const keys = await this.client.keys(pattern);
-      if (keys.length > 0) {
-        await this.client.del(keys);
-        logger.debug('Cache delete pattern', { pattern, count: keys.length });
-      }
-    } catch (error) {
-      logger.error('Cache delete pattern error', { pattern, error });
-      throw error;
+      logger.error('Redis DELETE error:', error);
+      return false;
     }
   }
 
@@ -88,59 +59,123 @@ export class RedisCache {
       const result = await this.client.exists(key);
       return result === 1;
     } catch (error) {
-      logger.error('Cache exists error', { key, error });
+      logger.error('Redis EXISTS error:', error);
       return false;
     }
   }
 
-  async increment(key: string, value: number = 1): Promise<number> {
+  async increment(key: string): Promise<number> {
     try {
-      return await this.client.incrBy(key, value);
+      const result = await this.client.incr(key);
+      return result;
     } catch (error) {
-      logger.error('Cache increment error', { key, error });
-      throw error;
+      logger.error('Redis INCREMENT error:', error);
+      return 0;
     }
   }
 
-  async expire(key: string, seconds: number): Promise<void> {
+  async decrement(key: string): Promise<number> {
+    try {
+      const result = await this.client.decr(key);
+      return result;
+    } catch (error) {
+      logger.error('Redis DECREMENT error:', error);
+      return 0;
+    }
+  }
+
+  async expire(key: string, seconds: number): Promise<boolean> {
     try {
       await this.client.expire(key, seconds);
+      return true;
     } catch (error) {
-      logger.error('Cache expire error', { key, error });
-      throw error;
+      logger.error('Redis EXPIRE error:', error);
+      return false;
+    }
+  }
+
+  async ttl(key: string): Promise<number> {
+    try {
+      const result = await this.client.ttl(key);
+      return result;
+    } catch (error) {
+      logger.error('Redis TTL error:', error);
+      return -1;
     }
   }
 
   async hGet(key: string, field: string): Promise<string | null> {
     try {
-      return await this.client.hGet(key, field);
+      const value = await this.client.hget(key, field);
+      return value || null;
     } catch (error) {
-      logger.error('Cache hGet error', { key, field, error });
+      logger.error('Redis HGET error:', error);
       return null;
     }
   }
 
-  async hSet(key: string, field: string, value: string): Promise<void> {
+  async hSet(key: string, field: string, value: string): Promise<boolean> {
     try {
-      await this.client.hSet(key, field, value);
+      await this.client.hset(key, field, value);
+      return true;
     } catch (error) {
-      logger.error('Cache hSet error', { key, field, error });
-      throw error;
+      logger.error('Redis HSET error:', error);
+      return false;
     }
   }
 
   async hGetAll(key: string): Promise<Record<string, string>> {
     try {
-      return await this.client.hGetAll(key);
+      const result = await this.client.hgetall(key);
+      return result;
     } catch (error) {
-      logger.error('Cache hGetAll error', { key, error });
+      logger.error('Redis HGETALL error:', error);
       return {};
     }
   }
 
-  getClient(): RedisClientType {
+  async hDel(key: string, field: string): Promise<boolean> {
+    try {
+      await this.client.hdel(key, field);
+      return true;
+    } catch (error) {
+      logger.error('Redis HDEL error:', error);
+      return false;
+    }
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    try {
+      const keys = await this.client.keys(pattern);
+      return keys;
+    } catch (error) {
+      logger.error('Redis KEYS error:', error);
+      return [];
+    }
+  }
+
+  async flushAll(): Promise<boolean> {
+    try {
+      await this.client.flushall();
+      return true;
+    } catch (error) {
+      logger.error('Redis FLUSHALL error:', error);
+      return false;
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      await this.client.quit();
+      logger.info('Redis disconnected');
+    } catch (error) {
+      logger.error('Redis disconnect error:', error);
+    }
+  }
+
+  getClient(): Redis {
     return this.client;
   }
 }
 
-export default RedisCache;
+export default new RedisCache();

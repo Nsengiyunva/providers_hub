@@ -1,89 +1,66 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { UserRole } from '@eventhub/shared-types';
-import { createLogger } from './logger';
-
-const logger = createLogger('jwt-utils');
 
 export interface JwtPayload {
   userId: string;
   email: string;
-  role: UserRole;
-  iat?: number;
-  exp?: number;
+  role: string;
 }
 
 export class JwtUtils {
-  private secret: string;
+  private accessTokenSecret: string;
+  private refreshTokenSecret: string;
   private accessTokenExpiry: string;
   private refreshTokenExpiry: string;
 
-  constructor(
-    secret: string = process.env.JWT_SECRET || 'your-secret-key',
-    accessTokenExpiry: string = '15m',
-    refreshTokenExpiry: string = '7d'
-  ) {
-    this.secret = secret;
-    this.accessTokenExpiry = accessTokenExpiry;
-    this.refreshTokenExpiry = refreshTokenExpiry;
+  constructor() {
+    this.accessTokenSecret = process.env.JWT_SECRET || 'your-secret-key';
+    this.refreshTokenSecret = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+    this.accessTokenExpiry = process.env.JWT_ACCESS_EXPIRY || '15m';
+    this.refreshTokenExpiry = process.env.JWT_REFRESH_EXPIRY || '7d';
   }
 
-  generateAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-    try {
-      const options: SignOptions = {
-        expiresIn: this.accessTokenExpiry
-      };
-      return jwt.sign(payload, this.secret, options);
-    } catch (error) {
-      logger.error('Error generating access token', { error });
-      throw error;
-    }
-  }
-
-  generateRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-    try {
-      const options: SignOptions = {
-        expiresIn: this.refreshTokenExpiry
-      };
-      return jwt.sign(payload, this.secret, options);
-    } catch (error) {
-      logger.error('Error generating refresh token', { error });
-      throw error;
-    }
-  }
-
-  generateTokenPair(payload: Omit<JwtPayload, 'iat' | 'exp'>): {
-    accessToken: string;
-    refreshToken: string;
-  } {
-    return {
-      accessToken: this.generateAccessToken(payload),
-      refreshToken: this.generateRefreshToken(payload)
+  generateAccessToken(payload: JwtPayload): string {
+    const options: SignOptions = {
+      expiresIn: this.accessTokenExpiry as string | number
     };
+    
+    return jwt.sign(payload, this.accessTokenSecret, options);
   }
 
-  verifyToken(token: string): JwtPayload {
+  generateRefreshToken(payload: JwtPayload): string {
+    const options: SignOptions = {
+      expiresIn: this.refreshTokenExpiry as string | number
+    };
+    
+    return jwt.sign(payload, this.refreshTokenSecret, options);
+  }
+
+  verifyAccessToken(token: string): JwtPayload {
     try {
-      return jwt.verify(token, this.secret) as JwtPayload;
+      const decoded = jwt.verify(token, this.accessTokenSecret) as JwtPayload;
+      return decoded;
     } catch (error) {
-      logger.error('Token verification failed', { error });
-      throw new Error('Invalid or expired token');
+      throw new Error('Invalid or expired access token');
+    }
+  }
+
+  verifyRefreshToken(token: string): JwtPayload {
+    try {
+      const decoded = jwt.verify(token, this.refreshTokenSecret) as JwtPayload;
+      return decoded;
+    } catch (error) {
+      throw new Error('Invalid or expired refresh token');
     }
   }
 
   decodeToken(token: string): JwtPayload | null {
     try {
-      return jwt.decode(token) as JwtPayload;
+      const decoded = jwt.decode(token) as JwtPayload;
+      return decoded;
     } catch (error) {
-      logger.error('Token decode failed', { error });
       return null;
     }
   }
-
-  isTokenExpired(token: string): boolean {
-    const decoded = this.decodeToken(token);
-    if (!decoded || !decoded.exp) return true;
-    return Date.now() >= decoded.exp * 1000;
-  }
 }
 
-export default JwtUtils;
+export default new JwtUtils();
