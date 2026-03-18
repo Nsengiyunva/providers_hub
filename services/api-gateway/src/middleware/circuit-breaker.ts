@@ -158,18 +158,26 @@ const circuitBreakerInstance = new CircuitBreaker();
 
 // ✅ FIXED MIDDLEWARE
 export const circuitBreakerMiddleware: RequestHandler = (req, res, next) => {
-  const serviceName = getServiceNameFromPath(req.path);
+  // ✅ SAFE PATH HANDLING (fixes your crash)
+  const path = req.originalUrl || req.url || req.path || '';
+
+  if (!path || typeof path !== 'string') {
+    return next();
+  }
+
+  const serviceName = getServiceNameFromPath(path);
 
   if (!serviceName) return next();
 
   if (!circuitBreakerInstance.canRequest(serviceName)) {
     return res.status(503).json({
       error: 'Service Unavailable',
-      message: `Circuit OPEN for ${serviceName}`
+      message: `Circuit OPEN for ${serviceName}`,
+      service: serviceName
     });
   }
 
-  // ✅ SAFER: use res.on('finish') instead of overriding res.end
+  // ✅ SAFE RESPONSE HOOK
   res.on('finish', () => {
     const statusCode = res.statusCode;
 
@@ -184,8 +192,12 @@ export const circuitBreakerMiddleware: RequestHandler = (req, res, next) => {
 };
 
 
-// Route → service mapping
-function getServiceNameFromPath(path: string): string | null {
+// ✅ SAFE ROUTE → SERVICE MAPPING
+function getServiceNameFromPath(path?: string): string | null {
+  if (!path || typeof path !== 'string') {
+    return null;
+  }
+
   if (path.startsWith('/api/users') || path.startsWith('/api/auth')) return 'user-service';
   if (path.startsWith('/api/profiles')) return 'profile-service';
   if (path.startsWith('/api/catalog')) return 'catalog-service';
@@ -198,10 +210,12 @@ function getServiceNameFromPath(path: string): string | null {
   return null;
 }
 
+
+// ✅ EXPORTS
 export default circuitBreakerMiddleware;
 
 export const circuitBreaker = circuitBreakerMiddleware;
 
-export function getCircuitBreakerStatus() {
+export function getCircuitBreakerStatus(): Record<string, ServiceCircuit> {
   return circuitBreakerInstance.getAllStatus();
 }
