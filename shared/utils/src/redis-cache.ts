@@ -1,5 +1,8 @@
+
 import Redis from 'ioredis';
-import logger from './logger';
+import { createLogger } from './logger';
+
+const logger = createLogger('redis-cache');
 
 export class RedisCache {
   private client: Redis;
