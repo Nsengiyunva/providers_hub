@@ -62,6 +62,10 @@ app.use(morgan('combined', {
 app.use(requestLogger);
 app.use(rateLimitMiddleware);
 
+app.use(circuitBreaker)    // ✓
+app.use(requestLogger)                // ✓
+app.use(errorHandler) 
+
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
   res.json({
