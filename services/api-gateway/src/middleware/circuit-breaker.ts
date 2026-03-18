@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import Redis from 'ioredis';
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
@@ -23,44 +23,44 @@ interface ServiceCircuit {
 }
 
 class CircuitBreaker {
-  private circuits: Map<string, ServiceCircuit>;
+  private circuits: Map<string, ServiceCircuit> = new Map();
   private config: CircuitBreakerConfig;
 
   constructor(config?: Partial<CircuitBreakerConfig>) {
-    this.circuits = new Map();
     this.config = {
       failureThreshold: 5,
-      resetTimeout: 60000, // 60 seconds
+      resetTimeout: 60000,
       halfOpenRequests: 3,
       ...config
     };
-    
-    // Load circuit states from Redis on startup
+
     this.loadCircuitStates();
   }
 
   private async loadCircuitStates(): Promise<void> {
     try {
-      const services = ['user-service', 'profile-service', 'catalog-service', 'inquiry-service'];
-      
+      const services = [
+        'user-service',
+        'profile-service',
+        'catalog-service',
+        'inquiry-service'
+      ];
+
       for (const service of services) {
-        const stateKey = `circuit:${service}:state`;
-        const failuresKey = `circuit:${service}:failures`;
-        
         const [state, failures] = await Promise.all([
-          redis.get(stateKey),
-          redis.get(failuresKey)
+          redis.get(`circuit:${service}:state`),
+          redis.get(`circuit:${service}:failures`)
         ]);
-        
+
         this.circuits.set(service, {
           state: (state as CircuitState) || CircuitState.CLOSED,
-          failures: parseInt(failures || '0'),
+          failures: parseInt(failures || '0', 10),
           lastFailureTime: Date.now(),
           successCount: 0
         });
       }
-    } catch (error) {
-      console.error('Error loading circuit states from Redis:', error);
+    } catch (error: unknown) {
+      console.error('Error loading circuit states:', error);
     }
   }
 
@@ -72,12 +72,12 @@ class CircuitBreaker {
         redis.expire(`circuit:${service}:state`, 3600),
         redis.expire(`circuit:${service}:failures`, 3600)
       ]);
-    } catch (error) {
-      console.error(`Error saving circuit state for ${service}:`, error);
+    } catch (error: unknown) {
+      console.error(`Error saving circuit for ${service}:`, error);
     }
   }
 
-  getCircuit(service: string): ServiceCircuit {
+  private getCircuit(service: string): ServiceCircuit {
     if (!this.circuits.has(service)) {
       this.circuits.set(service, {
         state: CircuitState.CLOSED,
@@ -94,14 +94,14 @@ class CircuitBreaker {
 
     if (circuit.state === CircuitState.HALF_OPEN) {
       circuit.successCount++;
-      
+
       if (circuit.successCount >= this.config.halfOpenRequests) {
         circuit.state = CircuitState.CLOSED;
         circuit.failures = 0;
         circuit.successCount = 0;
-        console.log(`Circuit for ${service} CLOSED after successful recovery`);
+        console.log(`Circuit CLOSED for ${service}`);
       }
-    } else if (circuit.state === CircuitState.CLOSED) {
+    } else {
       circuit.failures = Math.max(0, circuit.failures - 1);
     }
 
@@ -113,13 +113,13 @@ class CircuitBreaker {
     circuit.failures++;
     circuit.lastFailureTime = Date.now();
 
-    if (circuit.state === CircuitState.HALF_OPEN) {
+    if (
+      circuit.state === CircuitState.HALF_OPEN ||
+      circuit.failures >= this.config.failureThreshold
+    ) {
       circuit.state = CircuitState.OPEN;
       circuit.successCount = 0;
-      console.log(`Circuit for ${service} re-OPENED after failure in half-open state`);
-    } else if (circuit.failures >= this.config.failureThreshold) {
-      circuit.state = CircuitState.OPEN;
-      console.log(`Circuit for ${service} OPENED after ${circuit.failures} failures`);
+      console.log(`Circuit OPEN for ${service}`);
     }
 
     await this.saveCircuitState(service, circuit);
@@ -128,69 +128,49 @@ class CircuitBreaker {
   canRequest(service: string): boolean {
     const circuit = this.getCircuit(service);
 
-    if (circuit.state === CircuitState.CLOSED) {
-      return true;
-    }
+    if (circuit.state === CircuitState.CLOSED) return true;
 
     if (circuit.state === CircuitState.OPEN) {
-      const timeSinceLastFailure = Date.now() - circuit.lastFailureTime;
-      
-      if (timeSinceLastFailure >= this.config.resetTimeout) {
+      const elapsed = Date.now() - circuit.lastFailureTime;
+
+      if (elapsed >= this.config.resetTimeout) {
         circuit.state = CircuitState.HALF_OPEN;
         circuit.successCount = 0;
-        console.log(`Circuit for ${service} moved to HALF_OPEN state`);
+        console.log(`Circuit HALF_OPEN for ${service}`);
         return true;
       }
-      
+
       return false;
     }
 
-    // HALF_OPEN state
     return true;
   }
 
-  getStatus(service: string): ServiceCircuit {
-    return this.getCircuit(service);
-  }
-
   getAllStatus(): Record<string, ServiceCircuit> {
-    const status: Record<string, ServiceCircuit> = {};
-    this.circuits.forEach((circuit, service) => {
-      status[service] = { ...circuit };
-    });
-    return status;
+    const result: Record<string, ServiceCircuit> = {};
+    this.circuits.forEach((c, s) => (result[s] = { ...c }));
+    return result;
   }
 }
 
-// Create singleton instance
 const circuitBreakerInstance = new CircuitBreaker();
 
-// Middleware function
-export function circuitBreakerMiddleware(req: Request, res: Response, next: NextFunction): void {
 
-  if (!req || !req.path) {
-    return next();
-  }
-
+// ✅ FIXED MIDDLEWARE
+export const circuitBreakerMiddleware: RequestHandler = (req, res, next) => {
   const serviceName = getServiceNameFromPath(req.path);
 
-  if (!serviceName) {
-    return next();
-  }
+  if (!serviceName) return next();
 
   if (!circuitBreakerInstance.canRequest(serviceName)) {
-    res.status(503).json({
+    return res.status(503).json({
       error: 'Service Unavailable',
-      message: `Circuit breaker is OPEN for ${serviceName}`,
-      service: serviceName
+      message: `Circuit OPEN for ${serviceName}`
     });
-    return;
   }
 
-  // Intercept response to record success/failure
-  const originalEnd = res.end;
-  
-  res.end = function(this: Response, ...args: any[]): Response {
+  // ✅ SAFER: use res.on('finish') instead of overriding res.end
+  res.on('finish', () => {
     const statusCode = res.statusCode;
 
     if (statusCode >= 500) {
@@ -198,56 +178,30 @@ export function circuitBreakerMiddleware(req: Request, res: Response, next: Next
     } else {
       circuitBreakerInstance.recordSuccess(serviceName);
     }
-
-    // Call original end method with proper types
-    if (args.length > 0) {
-      return originalEnd.call(this, args[0], args[1] as BufferEncoding, args[2] as (() => void) | undefined);
-    }
-    return originalEnd.call(this);
-  };
+  });
 
   next();
-}
+};
 
+
+// Route → service mapping
 function getServiceNameFromPath(path: string): string | null {
-  if (!path || typeof path !== 'string') {
-    return null;
-  }
-  
-  if (path.startsWith('/api/users') || path.startsWith('/api/auth')) {
-    return 'user-service';
-  }
-  if (path.startsWith('/api/profiles')) {
-    return 'profile-service';
-  }
-  if (path.startsWith('/api/catalog')) {
-    return 'catalog-service';
-  }
-  if (path.startsWith('/api/inquiries') || path.startsWith('/api/bookings')) {
-    return 'inquiry-service';
-  }
-  if (path.startsWith('/api/payments')) {
-    return 'payment-service';
-  }
-  if (path.startsWith('/api/reviews')) {
-    return 'review-service';
-  }
-  if (path.startsWith('/api/notifications')) {
-    return 'notification-service';
-  }
-  if (path.startsWith('/api/media')) {
-    return 'media-service';
-  }
+  if (path.startsWith('/api/users') || path.startsWith('/api/auth')) return 'user-service';
+  if (path.startsWith('/api/profiles')) return 'profile-service';
+  if (path.startsWith('/api/catalog')) return 'catalog-service';
+  if (path.startsWith('/api/inquiries') || path.startsWith('/api/bookings')) return 'inquiry-service';
+  if (path.startsWith('/api/payments')) return 'payment-service';
+  if (path.startsWith('/api/reviews')) return 'review-service';
+  if (path.startsWith('/api/notifications')) return 'notification-service';
+  if (path.startsWith('/api/media')) return 'media-service';
+
   return null;
 }
 
-// Export middleware as default
 export default circuitBreakerMiddleware;
 
-// Also export for named import compatibility
 export const circuitBreaker = circuitBreakerMiddleware;
 
-// Export status endpoint
-export function getCircuitBreakerStatus(): Record<string, ServiceCircuit> {
+export function getCircuitBreakerStatus() {
   return circuitBreakerInstance.getAllStatus();
 }
