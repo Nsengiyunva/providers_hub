@@ -132,27 +132,6 @@ services:
     networks:
       - eventhub-network
 
-  # Profile Service (ensure folder exists)
-  # profile-service:
-  #   build:
-  #     context: ./services/profile-service
-  #     dockerfile: Dockerfile
-  #   container_name: eventhub-profile-service
-  #   ports:
-  #     - "3002:3002"
-  #   environment:
-  #     NODE_ENV: development
-  #     PORT: 3002
-  #     MONGODB_URI: mongodb://eventhub:eventhub123@mongodb:27017/eventhub?authSource=admin
-  #     REDIS_URL: redis://redis:6379
-  #     KAFKA_BROKERS: kafka:29092
-  #   depends_on:
-  #     - mongodb
-  #     - redis
-  #     - kafka
-  #   networks:
-  #     - eventhub-network
-
 # Volumes
 volumes:
   postgres_data:
