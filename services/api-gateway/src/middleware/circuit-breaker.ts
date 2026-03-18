@@ -167,6 +167,11 @@ const circuitBreakerInstance = new CircuitBreaker();
 
 // Middleware function
 export function circuitBreakerMiddleware(req: Request, res: Response, next: NextFunction): void {
+
+  if (!req || !req.path) {
+    return next();
+  }
+
   const serviceName = getServiceNameFromPath(req.path);
 
   if (!serviceName) {
@@ -205,6 +210,10 @@ export function circuitBreakerMiddleware(req: Request, res: Response, next: Next
 }
 
 function getServiceNameFromPath(path: string): string | null {
+  if (!path || typeof path !== 'string') {
+    return null;
+  }
+  
   if (path.startsWith('/api/users') || path.startsWith('/api/auth')) {
     return 'user-service';
   }
