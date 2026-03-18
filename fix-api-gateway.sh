@@ -1,3 +1,43 @@
+#!/bin/bash
+
+# Fix TypeScript Build Errors for API Gateway
+# This script fixes the circuit-breaker and request-logger middleware
+
+set -e
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+print_status() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_info() {
+    echo -e "${YELLOW}ℹ${NC} $1"
+}
+
+API_GATEWAY_DIR="/home/user1/personal/providers_hub/services/api-gateway"
+
+if [ ! -d "$API_GATEWAY_DIR" ]; then
+    print_error "API Gateway directory not found: $API_GATEWAY_DIR"
+    exit 1
+fi
+
+cd $API_GATEWAY_DIR
+
+print_info "Backing up original files..."
+cp src/middleware/circuit-breaker.ts src/middleware/circuit-breaker.ts.backup 2>/dev/null || true
+cp src/middleware/request-logger.ts src/middleware/request-logger.ts.backup 2>/dev/null || true
+print_status "Backups created"
+
+print_info "Fixing circuit-breaker.ts..."
+cat > src/middleware/circuit-breaker.ts << 'EOF'
 import { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 
@@ -30,12 +70,11 @@ class CircuitBreaker {
     this.circuits = new Map();
     this.config = {
       failureThreshold: 5,
-      resetTimeout: 60000, // 60 seconds
+      resetTimeout: 60000,
       halfOpenRequests: 3,
       ...config
     };
     
-    // Load circuit states from Redis on startup
     this.loadCircuitStates();
   }
 
@@ -145,7 +184,6 @@ class CircuitBreaker {
       return false;
     }
 
-    // HALF_OPEN state
     return true;
   }
 
@@ -162,10 +200,8 @@ class CircuitBreaker {
   }
 }
 
-// Create singleton instance
 const circuitBreakerInstance = new CircuitBreaker();
 
-// Middleware function
 export function circuitBreakerMiddleware(req: Request, res: Response, next: NextFunction): void {
   const serviceName = getServiceNameFromPath(req.path);
 
@@ -182,7 +218,6 @@ export function circuitBreakerMiddleware(req: Request, res: Response, next: Next
     return;
   }
 
-  // Intercept response to record success/failure
   const originalEnd = res.end;
   
   res.end = function(this: Response, ...args: any[]): Response {
@@ -194,7 +229,6 @@ export function circuitBreakerMiddleware(req: Request, res: Response, next: Next
       circuitBreakerInstance.recordSuccess(serviceName);
     }
 
-    // Call original end method with proper types
     if (args.length > 0) {
       return originalEnd.call(this, args[0], args[1] as BufferEncoding, args[2] as (() => void) | undefined);
     }
@@ -232,13 +266,78 @@ function getServiceNameFromPath(path: string): string | null {
   return null;
 }
 
-// Export middleware as default
 export default circuitBreakerMiddleware;
-
-// Also export for named import compatibility
 export const circuitBreaker = circuitBreakerMiddleware;
 
-// Export status endpoint
 export function getCircuitBreakerStatus(): Record<string, ServiceCircuit> {
   return circuitBreakerInstance.getAllStatus();
 }
+EOF
+
+print_status "circuit-breaker.ts fixed"
+
+print_info "Fixing request-logger.ts..."
+cat > src/middleware/request-logger.ts << 'EOF'
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '@eventhub/shared-utils';
+
+export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const startTime = Date.now();
+  
+  logger.info('Incoming request', {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    ip: req.ip,
+    userAgent: req.get('user-agent')
+  });
+
+  const originalEnd = res.end;
+  
+  res.end = function(this: Response, ...args: any[]): Response {
+    const duration = Date.now() - startTime;
+    
+    logger.info('Request completed', {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      contentLength: res.get('content-length')
+    });
+
+    if (res.statusCode >= 400) {
+      logger.warn('Request error', {
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        duration: `${duration}ms`
+      });
+    }
+
+    if (args.length > 0) {
+      return originalEnd.call(this, args[0], args[1] as BufferEncoding, args[2] as (() => void) | undefined);
+    }
+    return originalEnd.call(this);
+  };
+
+  next();
+}
+
+export default requestLogger;
+EOF
+
+print_status "request-logger.ts fixed"
+
+print_info "Building API Gateway..."
+if npm run build; then
+    print_status "API Gateway built successfully!"
+    echo ""
+    print_info "dist/index.js created at: $API_GATEWAY_DIR/dist/index.js"
+else
+    print_error "Build failed. Check errors above."
+    exit 1
+fi
+
+echo ""
+print_status "All fixes applied successfully!"
+print_info "You can now start PM2 with: pm2 start ecosystem.config.js"

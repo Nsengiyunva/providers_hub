@@ -31,7 +31,7 @@ cd services/user-service
 npm run dev
 
 # Terminal 2: API Gateway
-cd services/api-gateway
+cd services/api-gateway  
 npm run dev
 ```
 

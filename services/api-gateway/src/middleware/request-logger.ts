@@ -1,51 +1,51 @@
 import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { createLogger } from '@eventhub/shared-utils';
+import { logger } from '@eventhub/shared-utils';
 
-const logger = createLogger('request-logger');
-
-export const requestLogger = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  // Generate correlation ID
-  const correlationId = req.headers['x-correlation-id'] as string || uuidv4();
-  req.headers['x-correlation-id'] = correlationId;
-
-  // Attach to response headers
-  res.setHeader('X-Correlation-ID', correlationId);
-
+export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const startTime = Date.now();
-
+  
   // Log incoming request
   logger.info('Incoming request', {
-    correlationId,
     method: req.method,
     path: req.path,
     query: req.query,
     ip: req.ip,
-    userAgent: req.headers['user-agent']
+    userAgent: req.get('user-agent')
   });
 
-  // Capture the original end function
+  // Capture response
   const originalEnd = res.end;
-
-  // Override end function to log response
-  res.end = function(this: any, ...args: any[]) {
+  
+  res.end = function(this: Response, ...args: any[]): Response {
     const duration = Date.now() - startTime;
     
-    logger.info('Outgoing response', {
-      correlationId,
+    // Log response
+    logger.info('Request completed', {
       method: req.method,
       path: req.path,
       statusCode: res.statusCode,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
+      contentLength: res.get('content-length')
     });
 
-    // Call original end function
-    return originalEnd.apply(this, args);
-  } as any;
+    // Log errors
+    if (res.statusCode >= 400) {
+      logger.warn('Request error', {
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        duration: `${duration}ms`
+      });
+    }
+
+    // Call original end method with proper types
+    if (args.length > 0) {
+      return originalEnd.call(this, args[0], args[1] as BufferEncoding, args[2] as (() => void) | undefined);
+    }
+    return originalEnd.call(this);
+  };
 
   next();
-};
+}
+
+export default requestLogger;

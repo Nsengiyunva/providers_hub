@@ -16,8 +16,8 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_DIR="/home/user1/personal/providers_hub"
-DOMAIN="providerapi.erb.go.ug"  # Change this to your domain or use IP
+APP_DIR="/var/www/eventhub"
+DOMAIN="eventhub.yourdomain.com"  # Change this to your domain or use IP
 LOG_DIR="$APP_DIR/logs"
 NODE_VERSION="20"
 
@@ -409,7 +409,7 @@ module.exports = {
   apps: [
     {
       name: 'api-gateway',
-      cwd: '/home/user1/personal/providers_hub/services/api-gateway',
+      cwd: '/var/www/eventhub/services/api-gateway',
       script: 'dist/index.js',
       instances: 2,
       exec_mode: 'cluster',
@@ -417,8 +417,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000
       },
-      error_file: '/home/user1/personal/providers_hub/logs/api-gateway-error.log',
-      out_file: '/home/user1/personal/providers_hub/logs/api-gateway-out.log',
+      error_file: '/var/www/eventhub/logs/api-gateway-error.log',
+      out_file: '/var/www/eventhub/logs/api-gateway-out.log',
       merge_logs: true,
       time: true,
       max_memory_restart: '500M',
@@ -427,7 +427,7 @@ module.exports = {
     },
     {
       name: 'user-service',
-      cwd: '/home/user1/personal/providers_hub/services/user-service',
+      cwd: '/var/www/eventhub/services/user-service',
       script: 'dist/index.js',
       instances: 2,
       exec_mode: 'cluster',
@@ -435,8 +435,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001
       },
-      error_file: '/home/user1/personal/providers_hub/logs/user-service-error.log',
-      out_file: '/home/user1/personal/providers_hub/logs/user-service-out.log',
+      error_file: '/var/www/eventhub/logs/user-service-error.log',
+      out_file: '/var/www/eventhub/logs/user-service-out.log',
       merge_logs: true,
       time: true,
       max_memory_restart: '500M',
@@ -460,7 +460,7 @@ create_helper_scripts() {
     # Start script
     cat > $APP_DIR/start.sh << 'SCRIPT_EOF'
 #!/bin/bash
-cd /home/user1/personal/providers_hub
+cd /var/www/eventhub
 docker-compose up -d postgres redis kafka
 sleep 10
 pm2 start ecosystem.config.js
@@ -528,7 +528,7 @@ setup_logrotate() {
     print_section "Configuring Log Rotation"
     
     cat > /etc/logrotate.d/eventhub << 'LOGROTATE_EOF'
-/home/user1/personal/providers_hub/logs/*.log {
+/var/www/eventhub/logs/*.log {
     daily
     rotate 14
     compress

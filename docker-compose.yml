@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL
+  # PostgreSQL for transactional data
   postgres:
     image: postgres:15-alpine
     container_name: eventhub-postgres
@@ -17,7 +17,7 @@ services:
     networks:
       - eventhub-network
 
-  # MongoDB
+  # MongoDB for profiles and media metadata
   mongodb:
     image: mongo:7
     container_name: eventhub-mongodb
@@ -32,7 +32,7 @@ services:
     networks:
       - eventhub-network
 
-  # Redis
+  # Redis for caching and sessions
   redis:
     image: redis:7-alpine
     container_name: eventhub-redis
@@ -55,7 +55,7 @@ services:
     networks:
       - eventhub-network
 
-  # Kafka
+  # Kafka for event streaming
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: eventhub-kafka
@@ -63,11 +63,10 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
-      - "29092:29092"
+      - "9093:9093"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -76,7 +75,7 @@ services:
     networks:
       - eventhub-network
 
-  # MinIO
+  # MinIO for object storage (S3 compatible)
   minio:
     image: minio/minio:latest
     container_name: eventhub-minio
@@ -132,14 +131,170 @@ services:
     networks:
       - eventhub-network
 
-# Volumes
+  # Profile Service
+  profile-service:
+    build:
+      context: ./services/profile-service
+      dockerfile: Dockerfile
+    container_name: eventhub-profile-service
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      MONGODB_URI: mongodb://eventhub:eventhub123@mongodb:27017/eventhub?authSource=admin
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      - mongodb
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Catalog Service
+  catalog-service:
+    build:
+      context: ./services/catalog-service
+      dockerfile: Dockerfile
+    container_name: eventhub-catalog-service
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://eventhub:eventhub123@postgres:5432/eventhub
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Inquiry Service
+  inquiry-service:
+    build:
+      context: ./services/inquiry-service
+      dockerfile: Dockerfile
+    container_name: eventhub-inquiry-service
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://eventhub:eventhub123@postgres:5432/eventhub
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: eventhub-payment-service
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgresql://eventhub:eventhub123@postgres:5432/eventhub
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+      STRIPE_SECRET_KEY: sk_test_your_stripe_key_here
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Review Service
+  review-service:
+    build:
+      context: ./services/review-service
+      dockerfile: Dockerfile
+    container_name: eventhub-review-service
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      DATABASE_URL: postgresql://eventhub:eventhub123@postgres:5432/eventhub
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: eventhub-notification-service
+    ports:
+      - "3007:3007"
+    environment:
+      NODE_ENV: development
+      PORT: 3007
+      MONGODB_URI: mongodb://eventhub:eventhub123@mongodb:27017/eventhub?authSource=admin
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+      SMTP_HOST: smtp.mailtrap.io
+      SMTP_PORT: 2525
+      SMTP_USER: your_smtp_user
+      SMTP_PASS: your_smtp_pass
+    depends_on:
+      - mongodb
+      - redis
+      - kafka
+    networks:
+      - eventhub-network
+
+  # Media Service
+  media-service:
+    build:
+      context: ./services/media-service
+      dockerfile: Dockerfile
+    container_name: eventhub-media-service
+    ports:
+      - "3008:3008"
+    environment:
+      NODE_ENV: development
+      PORT: 3008
+      MONGODB_URI: mongodb://eventhub:eventhub123@mongodb:27017/eventhub?authSource=admin
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: eventhub
+      MINIO_SECRET_KEY: eventhub123
+      MINIO_BUCKET: eventhub-media
+    depends_on:
+      - mongodb
+      - redis
+      - kafka
+      - minio
+    networks:
+      - eventhub-network
+
 volumes:
   postgres_data:
   mongodb_data:
   redis_data:
   minio_data:
 
-# Network
 networks:
   eventhub-network:
     driver: bridge
